@@ -1,0 +1,461 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  // A shadowDatabaseUrl used to be required here (see
+  // MIGRATION_SHADOW_DB_FIX.md for the history): 00000000000000_baseline was
+  // an empty migration, so a fresh shadow database had nothing to replay
+  // onto. That's fixed now — baseline recreates the full original schema,
+  // guarded with IF NOT EXISTS / DO $$ ... IF NOT EXISTS blocks, so it
+  // replays cleanly from empty. Separately, Neon added support for
+  // creating/dropping databases via SQL, so Prisma can auto-provision its
+  // own throwaway shadow database on `migrate dev` — no manually-maintained
+  // clone/branch needed any more.
+}
+
+model User {
+  id                   String                  @id @default(uuid())
+  fullName             String
+  email                String                  @unique
+  phone                String?
+  passwordHash         String
+  role                 UserRole
+  adminType            AdminType?
+  accountStatus        AccountStatus           @default(ACTIVE)
+  address              String                  @default("Jolshiri Abashon, Purbachal, Dhaka")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  plotNumber           String?
+  sectorNumber         Int?
+  constructionStatus   PlotConstructionStatus?
+  rentStatus           PlotRentStatus?
+  resetToken           String?
+  resetTokenExpiry     DateTime?
+  // Email verification for public signup. Defaults to true so existing
+  // rows (seeded accounts, already-registered users) and Google Sign-In
+  // accounts (Google already verified that email) are unaffected — only
+  // the public /api/auth/signup controller explicitly sets this false on
+  // a freshly created account, until it's confirmed via signupOtp.
+  isEmailVerified      Boolean                 @default(true)
+  signupOtp            String?
+  signupOtpExpiry      DateTime?
+  googleUid            String?                 @unique
+  fcmToken             String?
+  notifications        AppNotification[]
+  appointments         Appointment[]
+  communityPosts       CommunityPost[]
+  complaints           Complaint[]
+  complaintUpdates     ComplaintUpdate[]
+  constructionAsOwner  ConstructionProject[]   @relation("ProjectResident")
+  developerProfile     Developer?
+  meetingsAsResident   DeveloperMeeting[]      @relation("MeetingResident")
+  messagesReceived     Message[]               @relation("MessageReceiver")
+  messagesSent         Message[]               @relation("MessageSender")
+  notices              Notice[]
+  payments             PaymentRecord[]
+  postComments         PostComment[]
+  quoteRequests        QuoteRequest[]          @relation("QuoteCustomer")
+  rentalListings       RentalListing[]
+  viewingRequests      RentalViewingRequest[]
+  securityReports      SecurityReport[]
+  serviceBookings      ServiceBooking[]        @relation("BookingCustomer")
+  providerProfile      ServiceProvider?
+  serviceReviewsGiven  ServiceReview[]
+  soilTestApplications SoilTestApplication[]
+}
+
+model RentalListing {
+  id              String                 @id @default(uuid())
+  title           String
+  location        String
+  rentAmount      String
+  availability    String
+  description     String
+  bedrooms        Int
+  imageUrl        String?
+  ownerId         String
+  createdAt       DateTime               @default(now())
+  owner           User                   @relation(fields: [ownerId], references: [id])
+  viewingRequests RentalViewingRequest[]
+}
+
+model RentalViewingRequest {
+  id             String        @id @default(uuid())
+  listingId      String
+  requesterId    String
+  requesterName  String
+  requesterPhone String
+  note           String
+  requestedAt    DateTime      @default(now())
+  status         RequestStatus @default(PENDING)
+  messages       Message[]
+  listing        RentalListing @relation(fields: [listingId], references: [id])
+  requester      User          @relation(fields: [requesterId], references: [id])
+}
+
+model Message {
+  id               String               @id @default(uuid())
+  viewingRequestId String
+  senderId         String
+  receiverId       String
+  content          String
+  sentAt           DateTime             @default(now())
+  isRead           Boolean              @default(false)
+  receiver         User                 @relation("MessageReceiver", fields: [receiverId], references: [id])
+  sender           User                 @relation("MessageSender", fields: [senderId], references: [id])
+  viewingRequest   RentalViewingRequest @relation(fields: [viewingRequestId], references: [id])
+}
+
+model Developer {
+  id                String                @id @default(uuid())
+  userId            String                @unique
+  companyName       String
+  contact           String
+  rating            Float                 @default(0)
+  specialty         String
+  verified          Boolean               @default(false)
+  constructionSites ConstructionProject[]
+  user              User                  @relation(fields: [userId], references: [id])
+  meetings          DeveloperMeeting[]
+  quoteRequests     QuoteRequest[]
+}
+
+model ServiceProvider {
+  id             String           @id @default(uuid())
+  userId         String           @unique
+  name           String
+  serviceType    String
+  phone          String
+  rating         Float            @default(0)
+  reviews        Int              @default(0)
+  verified       Boolean          @default(false)
+  bookings       ServiceBooking[]
+  user           User             @relation(fields: [userId], references: [id])
+  serviceReviews ServiceReview[]
+}
+
+model ServiceReview {
+  id         String          @id @default(uuid())
+  providerId String
+  residentId String
+  rating     Int
+  comment    String
+  reviewedAt DateTime        @default(now())
+  provider   ServiceProvider @relation(fields: [providerId], references: [id])
+  resident   User            @relation(fields: [residentId], references: [id])
+}
+
+model ServiceBooking {
+  id          String          @id @default(uuid())
+  customerId  String
+  providerId  String
+  serviceType String
+  address     String
+  note        String
+  requestedAt DateTime        @default(now())
+  status      RequestStatus   @default(PENDING)
+  reviewed    Boolean         @default(false)
+  customer    User            @relation("BookingCustomer", fields: [customerId], references: [id])
+  provider    ServiceProvider @relation(fields: [providerId], references: [id])
+}
+
+model QuoteRequest {
+  id           String        @id @default(uuid())
+  customerId   String
+  developerId  String
+  projectType  String
+  plotLocation String
+  budget       String
+  note         String
+  requestedAt  DateTime      @default(now())
+  status       RequestStatus @default(PENDING)
+  customer     User          @relation("QuoteCustomer", fields: [customerId], references: [id])
+  developer    Developer     @relation(fields: [developerId], references: [id])
+}
+
+model DeveloperMeeting {
+  id            String           @id @default(uuid())
+  developerId   String
+  residentId    String
+  subject       String
+  plotReference String
+  mode          MeetingMode      @default(ONLINE)
+  platform      MeetingPlatform?
+  meetingLink   String?
+  location      String?
+  scheduledFor  DateTime
+  note          String
+  status        MeetingStatus    @default(PENDING)
+  createdAt     DateTime         @default(now())
+  developer     Developer        @relation(fields: [developerId], references: [id])
+  resident      User             @relation("MeetingResident", fields: [residentId], references: [id])
+}
+
+model ConstructionProject {
+  id                  String                   @id @default(uuid())
+  projectName         String
+  plotReference       String
+  residentId          String
+  developerId         String
+  estimatedCompletion String
+  permitStatus        ConstructionPermitStatus @default(PENDING)
+  createdAt           DateTime                 @default(now())
+  developer           Developer                @relation(fields: [developerId], references: [id])
+  resident            User                     @relation("ProjectResident", fields: [residentId], references: [id])
+  stages              ConstructionStage[]
+}
+
+model ConstructionStage {
+  id            String                  @id @default(uuid())
+  projectId     String
+  title         String
+  description   String
+  progress      Float                   @default(0)
+  status        ConstructionStageStatus @default(UPCOMING)
+  eta           String
+  order         Int                     @default(0)
+  developerNote String                  @default("")
+  project       ConstructionProject     @relation(fields: [projectId], references: [id])
+}
+
+model SoilTestApplication {
+  id            String         @id @default(uuid())
+  applicantId   String
+  plotReference String
+  projectName   String
+  appliedAt     DateTime       @default(now())
+  status        SoilTestStatus @default(REQUESTED)
+  note          String         @default("")
+  // Set once the Authority grants the permit — the soil test fee the
+  // resident must pay before the "Testing completed" step is reachable.
+  paymentId     String?        @unique
+  applicant     User           @relation(fields: [applicantId], references: [id])
+  payment       PaymentRecord? @relation(fields: [paymentId], references: [id])
+}
+
+model Complaint {
+  id            String            @id @default(uuid())
+  residentId    String
+  title         String
+  category      String
+  description   String
+  plotReference String
+  imageUrl      String?
+  createdAt     DateTime          @default(now())
+  status        ComplaintStatus   @default(SUBMITTED)
+  progress      Float             @default(0)
+  resident      User              @relation(fields: [residentId], references: [id])
+  updates       ComplaintUpdate[]
+}
+
+model ComplaintUpdate {
+  id          String          @id @default(uuid())
+  complaintId String
+  authorId    String?
+  note        String
+  status      ComplaintStatus
+  updatedAt   DateTime        @default(now())
+  author      User?           @relation(fields: [authorId], references: [id])
+  complaint   Complaint       @relation(fields: [complaintId], references: [id])
+}
+
+model PaymentRecord {
+  id          String         @id @default(uuid())
+  userId      String
+  title       String
+  description String
+  purpose     PaymentPurpose
+  amount      String
+  createdAt   DateTime       @default(now())
+  reference   String         @unique
+  status      PaymentStatus  @default(DUE)
+  gatewayRef  String?
+  user        User           @relation(fields: [userId], references: [id])
+  soilTestApplication SoilTestApplication?
+}
+
+model Notice {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  publishDate   DateTime @default(now())
+  category      String
+  publishedById String
+  publishedBy   User     @relation(fields: [publishedById], references: [id])
+}
+
+model Office {
+  id       String @id @default(uuid())
+  name     String
+  contact  String
+  location String
+}
+
+model Appointment {
+  id            String   @id @default(uuid())
+  officeName    String
+  preferredDate DateTime
+  reason        String
+  status        String   @default("Pending")
+  requestedById String
+  createdAt     DateTime @default(now())
+  requestedBy   User     @relation(fields: [requestedById], references: [id])
+}
+
+model CommunityPost {
+  id       String        @id @default(uuid())
+  authorId String
+  content  String
+  category String
+  postedAt DateTime      @default(now())
+  price    String?
+  imageUrl String?
+  author   User          @relation(fields: [authorId], references: [id])
+  comments PostComment[]
+}
+
+model PostComment {
+  id       String        @id @default(uuid())
+  postId   String
+  authorId String
+  text     String
+  postedAt DateTime      @default(now())
+  author   User          @relation(fields: [authorId], references: [id])
+  post     CommunityPost @relation(fields: [postId], references: [id])
+}
+
+model AppNotification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model SecurityReport {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  status      String   @default("Open")
+  reportedAt  DateTime @default(now())
+  reporterId  String?
+  reporter    User?    @relation(fields: [reporterId], references: [id])
+  // Location fields — block label (e.g. "Block C") and approximate GPS coords
+  // of where the incident occurred. Both optional for backward compat.
+  block       String?
+  latitude    Float?
+  longitude   Float?
+  // Severity of the incident — set by the resident when filing the report.
+  // Used by the admin heatmap to colour circles: MILD → green, MODERATE → orange, SEVERE → red.
+  severity    IncidentSeverity @default(MODERATE)
+}
+
+enum IncidentSeverity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum UserRole {
+  RESIDENT_OWNER
+  SERVICE_PROVIDER
+  DEVELOPER
+  ADMIN
+}
+
+enum AdminType {
+  JOLSHIRI_MANAGEMENT
+  ARMY_OVERSIGHT
+  SYSTEM_MODERATOR
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum PlotConstructionStatus {
+  NOT_STARTED
+  UNDER_CONSTRUCTION
+  COMPLETED
+}
+
+enum PlotRentStatus {
+  OWNER_OCCUPIED
+  RENTING_OUT
+  NOT_RENTING
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  COMPLETED
+}
+
+enum MeetingMode {
+  ONLINE
+  OFFLINE
+}
+
+enum MeetingPlatform {
+  ZOOM
+  GOOGLE_MEET
+}
+
+enum MeetingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum ConstructionPermitStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ConstructionStageStatus {
+  COMPLETED
+  IN_PROGRESS
+  UPCOMING
+  DELAYED
+  PENDING_APPROVAL
+}
+
+// Flow: REQUESTED -> (Authority grants permit) PERMIT_GRANTED ->
+// (resident pays the soil test fee) PAYMENT_DONE -> (Authority runs the
+// test) COMPLETED. REJECTED can follow REQUESTED or PERMIT_GRANTED.
+enum SoilTestStatus {
+  REQUESTED
+  PERMIT_GRANTED
+  PAYMENT_DONE
+  COMPLETED
+  REJECTED
+}
+
+enum ComplaintStatus {
+  SUBMITTED
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum PaymentPurpose {
+  CONSULTATION_FEE
+  DEVELOPMENT_AGREEMENT
+  SOIL_TEST_FEE
+}
+
+enum PaymentStatus {
+  DUE
+  PROCESSING
+  PAID
+  FAILED
+}

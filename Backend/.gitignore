@@ -1,0 +1,71 @@
+# ================================
+# Node.js
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ================================
+# Environment / Secrets
+# ================================
+.env
+.env.*
+!.env.example
+
+# ================================
+# Logs
+# ================================
+logs/
+*.log
+
+# ================================
+# Build / Distribution
+# ================================
+dist/
+build/
+coverage/
+
+# ================================
+# Prisma
+# ================================
+# Keep Prisma schema and migrations tracked.
+# Do NOT ignore prisma/migrations/
+
+# ================================
+# Uploads / User Generated Files
+# ================================
+uploads/
+tmp/
+temp/
+
+# ================================
+# OS Files
+# ================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ================================
+# IDE / Editor
+# ================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.idea/
+*.swp
+*.swo
+
+# ================================
+# Runtime / Cache
+# ================================
+.cache/
+.npm/
+.eslintcache
+
+# ================================
+# Test / Coverage
+# ================================
+.nyc_output/
